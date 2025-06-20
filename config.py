@@ -15,7 +15,7 @@ DEFAULT_CONFIG = {
 
     # OpenRouter配置
     "openrouter": {
-        "api_key": "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",
+        "api_key": "*************************************************************",
         "base_url": "https://openrouter.ai/api/v1",
         "model_name": "google/gemini-2.5-pro-preview",
         "http_referer": "<YOUR_SITE_URL>",
