@@ -14,24 +14,26 @@ def check_dependencies():
     """检查必要的依赖是否已安装"""
     print("🔍 检查依赖...")
     
-    required_packages = [
-        'pyinstaller',
-        'opencv-python', 
-        'openai',
-        'Pillow',
-        'numpy',
-        'requests'
-    ]
-    
+    # 包名映射：pip包名 -> 导入名
+    package_mapping = {
+        'pyinstaller': 'PyInstaller',
+        'opencv-python': 'cv2',
+        'openai': 'openai',
+        'Pillow': 'PIL',
+        'numpy': 'numpy',
+        'requests': 'requests',
+        'tkinterdnd2': 'tkinterdnd2'
+    }
+
     missing_packages = []
-    
-    for package in required_packages:
+
+    for pip_name, import_name in package_mapping.items():
         try:
-            __import__(package.replace('-', '_'))
-            print(f"✅ {package} - 已安装")
+            __import__(import_name)
+            print(f"✅ {pip_name} - 已安装")
         except ImportError:
-            missing_packages.append(package)
-            print(f"❌ {package} - 未安装")
+            missing_packages.append(pip_name)
+            print(f"❌ {pip_name} - 未安装")
     
     if missing_packages:
         print(f"\n⚠️ 缺少以下依赖包: {', '.join(missing_packages)}")
@@ -180,9 +182,11 @@ def copy_resources():
     # 要复制的文件
     resource_files = [
         'requirements.txt',
-        '使用说明.md',
-        '项目总结.md',
-        '完整版使用指南.md'
+        'README.md',
+        '全图翻译使用指南.md',
+        '快速配置指南.md',
+        '安全配置指南.md',
+        'user_config_template.json'
     ]
     
     for file_name in resource_files:
