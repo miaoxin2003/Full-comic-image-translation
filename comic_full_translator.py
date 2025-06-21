@@ -2071,18 +2071,37 @@ class ComicFullTranslatorApp:
     def parse_translation_response(self, content):
         """解析翻译响应"""
         try:
-            # 尝试提取JSON部分
+            print(f"🔍 开始解析响应，内容长度: {len(content)}")
 
-            # 查找JSON代码块
+            # 尝试多种方式提取JSON部分
+            json_str = None
+
+            # 方法1: 查找JSON代码块
             json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
+                print("✅ 找到JSON代码块")
             else:
-                # 如果没有代码块，尝试直接解析
-                json_str = content.strip()
+                # 方法2: 查找数组格式 [...]
+                array_match = re.search(r'\[\s*\{.*?\}\s*\]', content, re.DOTALL)
+                if array_match:
+                    json_str = array_match.group(0)
+                    print("✅ 找到JSON数组")
+                else:
+                    # 方法3: 尝试直接解析整个内容
+                    json_str = content.strip()
+                    print("⚠️ 尝试直接解析内容")
+
+            if not json_str:
+                print("❌ 无法找到JSON内容")
+                return self.parse_text_response(content)
+
+            # 清理JSON字符串
+            json_str = json_str.strip()
 
             # 解析JSON
             results = json.loads(json_str)
+            print(f"✅ JSON解析成功，找到 {len(results) if isinstance(results, list) else 1} 个项目")
 
             # 验证结果格式
             if isinstance(results, list):
@@ -2094,6 +2113,7 @@ class ComicFullTranslatorApp:
                             'original_text': item.get('original_text', ''),
                             'translation': item.get('translation', '')
                         })
+                print(f"✅ 验证完成，有效项目: {len(validated_results)}")
                 return validated_results
             else:
                 # 如果不是列表格式，尝试转换
@@ -2101,20 +2121,46 @@ class ComicFullTranslatorApp:
                     return [results]
 
         except json.JSONDecodeError as e:
-            print(f"JSON解析失败: {e}")
-            print(f"原始内容: {content}")
+            print(f"❌ JSON解析失败: {e}")
+            print(f"📄 尝试解析的内容: {json_str[:200]}...")
 
             # 如果JSON解析失败，尝试简单的文本解析
             return self.parse_text_response(content)
 
         except Exception as e:
-            print(f"解析响应时出错: {e}")
+            print(f"❌ 解析响应时出错: {e}")
             return []
 
     def parse_text_response(self, content):
         """解析纯文本响应"""
         try:
-            # 简单的文本解析，将整个响应作为一个翻译结果
+            print("🔍 尝试文本解析...")
+
+            # 检查是否包含JSON内容（避免重复包装）
+            if '```json' in content or (content.strip().startswith('[') and content.strip().endswith(']')):
+                print("⚠️ 内容似乎包含JSON，尝试重新解析")
+                # 尝试再次提取JSON
+                if '```json' in content:
+                    json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+                    if json_match:
+                        try:
+                            results = json.loads(json_match.group(1))
+                            if isinstance(results, list):
+                                return results
+                        except:
+                            pass
+
+                # 如果是数组格式，直接尝试解析
+                content_clean = content.strip()
+                if content_clean.startswith('[') and content_clean.endswith(']'):
+                    try:
+                        results = json.loads(content_clean)
+                        if isinstance(results, list):
+                            return results
+                    except:
+                        pass
+
+            # 简单的文本解析
             lines = content.strip().split('\n')
             results = []
 
@@ -2142,18 +2188,29 @@ class ComicFullTranslatorApp:
                             'translation': parts[1].strip()
                         })
 
-            # 如果没有解析到任何结果，将整个内容作为翻译
+            # 如果没有解析到任何结果，但内容很长，可能是格式问题
             if not results:
-                results.append({
-                    'type': '翻译结果',
-                    'original_text': '图片内容',
-                    'translation': content.strip()
-                })
+                # 检查内容长度，如果太长可能是JSON格式错误
+                if len(content) > 100 and ('{' in content or '[' in content):
+                    print("⚠️ 内容较长且包含JSON字符，可能是格式问题")
+                    return [{
+                        'type': '解析错误',
+                        'original_text': '响应格式错误',
+                        'translation': 'AI返回的内容格式不正确，请检查提示词设置或重试'
+                    }]
+                else:
+                    # 短内容作为简单翻译结果
+                    results.append({
+                        'type': '翻译结果',
+                        'original_text': '图片内容',
+                        'translation': content.strip()
+                    })
 
+            print(f"✅ 文本解析完成，找到 {len(results)} 个项目")
             return results
 
         except Exception as e:
-            print(f"文本解析失败: {e}")
+            print(f"❌ 文本解析失败: {e}")
             return [{
                 'type': '错误',
                 'original_text': '解析失败',
