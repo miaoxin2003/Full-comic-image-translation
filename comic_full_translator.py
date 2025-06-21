@@ -161,17 +161,17 @@ class SettingsWindow:
         
         # 目标语言
         ttk.Label(translate_frame, text="目标语言:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.target_lang_var = tk.StringVar(value="中文")
+        self.target_lang_var = tk.StringVar(value=config_manager.get_target_language())
         lang_combo = ttk.Combobox(translate_frame, textvariable=self.target_lang_var,
-                                 values=["中文", "日文", "韩文", "法文", "德文", "西班牙文"], 
+                                 values=["中文", "日文", "韩文", "法文", "德文", "西班牙文"],
                                  state="readonly", width=20)
         lang_combo.grid(row=0, column=1, sticky=tk.W, pady=5, padx=(10, 0))
-        
+
         # 翻译风格
         ttk.Label(translate_frame, text="翻译风格:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.style_var = tk.StringVar(value="自然")
+        self.style_var = tk.StringVar(value=config_manager.get_translation_style())
         style_combo = ttk.Combobox(translate_frame, textvariable=self.style_var,
-                                  values=["自然", "直译", "意译", "口语化", "正式"], 
+                                  values=["自然", "直译", "意译", "口语化", "正式"],
                                   state="readonly", width=20)
         style_combo.grid(row=1, column=1, sticky=tk.W, pady=5, padx=(10, 0))
         
@@ -181,27 +181,10 @@ class SettingsWindow:
         
         self.prompt_text = scrolledtext.ScrolledText(prompt_frame, height=8, wrap=tk.WORD)
         self.prompt_text.pack(fill=tk.BOTH, expand=True)
-        
-        # 设置默认提示词
-        default_prompt = """请分析这张图片中的所有文本内容，包括对话气泡、标题、旁白、音效文字等。
 
-要求：
-1. 识别图片中的每一个文本块
-2. 对每个文本块进行分类（如：对话、旁白、标题、音效等）
-3. 将所有文本翻译成中文
-4. 保持原文的语气和风格
-
-请按以下JSON格式返回结果：
-```json
-[
-  {
-    "type": "对话气泡",
-    "original_text": "原文内容",
-    "translation": "中文翻译"
-  }
-]
-```"""
-        self.prompt_text.insert(1.0, default_prompt)
+        # 从配置中加载自定义提示词
+        saved_prompt = config_manager.get_custom_prompt()
+        self.prompt_text.insert(1.0, saved_prompt)
     
     def create_config_inputs(self):
         """创建配置输入框"""
@@ -358,7 +341,7 @@ class SettingsWindow:
             # 保存API服务商
             provider = self.provider_var.get()
             config_manager.update_provider(provider)
-            
+
             # 保存API配置
             provider_updates = {}
             for key, var in self.config_vars.items():
@@ -374,7 +357,7 @@ class SettingsWindow:
                         provider_updates[key] = value
                 else:
                     provider_updates[key] = var.get()
-            
+
             # 保存模型选择
             selected_model = self.get_selected_model()
             if selected_model:
@@ -385,6 +368,29 @@ class SettingsWindow:
 
             # 更新配置
             config_manager.update_provider_config(provider, provider_updates)
+
+            # 保存高级设置
+            advanced_settings = {}
+
+            # 保存目标语言
+            if hasattr(self, 'target_lang_var'):
+                advanced_settings["target_language"] = self.target_lang_var.get()
+                print(f"💾 保存目标语言: {self.target_lang_var.get()}")
+
+            # 保存翻译风格
+            if hasattr(self, 'style_var'):
+                advanced_settings["translation_style"] = self.style_var.get()
+                print(f"💾 保存翻译风格: {self.style_var.get()}")
+
+            # 保存自定义提示词
+            if hasattr(self, 'prompt_text'):
+                custom_prompt = self.prompt_text.get(1.0, tk.END).strip()
+                advanced_settings["custom_prompt"] = custom_prompt
+                print(f"💾 保存自定义提示词: {len(custom_prompt)} 字符")
+
+            # 更新高级设置到配置
+            if advanced_settings:
+                config_manager.update_advanced_settings(advanced_settings)
 
             # 验证保存结果
             saved_config = config_manager.get_current_provider_config()
@@ -397,7 +403,7 @@ class SettingsWindow:
                 self.callback()
 
             self.window.destroy()
-            
+
         except Exception as e:
             messagebox.showerror("保存失败", f"保存设置时发生错误: {e}")
     
@@ -1895,36 +1901,53 @@ class ComicFullTranslatorApp:
                 custom_headers = provider_config.get("headers", {})
                 headers.update(custom_headers)
 
+            # 获取高级设置
+            target_language = config_manager.get_target_language()
+            translation_style = config_manager.get_translation_style()
+            custom_prompt = config_manager.get_custom_prompt()
+
             # 构建全图翻译提示词
-            prompt = """请分析这张图片中的所有文本内容，包括对话气泡、标题、旁白、音效文字等。
+            # 如果用户自定义了提示词，使用自定义的；否则使用动态生成的
+            if custom_prompt and custom_prompt.strip():
+                # 替换提示词中的占位符
+                prompt = custom_prompt.replace("{target_language}", target_language)
+                prompt = prompt.replace("{translation_style}", translation_style)
+            else:
+                # 使用默认提示词模板，但根据设置动态调整
+                prompt = f"""请分析这张图片中的所有文本内容，包括对话气泡、标题、旁白、音效文字等。
 
 要求：
 1. 识别图片中的每一个文本块
 2. 对每个文本块进行分类（如：对话、旁白、标题、音效等）
-3. 将所有文本翻译成中文
-4. 保持原文的语气和风格
+3. 将所有文本翻译成{target_language}
+4. 翻译风格：{translation_style}
+5. 保持原文的语气和风格
 
 请按以下JSON格式返回结果：
 ```json
 [
-  {
+  {{
     "type": "对话气泡",
     "original_text": "原文内容",
-    "translation": "中文翻译"
-  },
-  {
+    "translation": "{target_language}翻译"
+  }},
+  {{
     "type": "旁白",
     "original_text": "原文内容",
-    "translation": "中文翻译"
-  }
+    "translation": "{target_language}翻译"
+  }}
 ]
 ```
 
 注意：
 - 每个独立的文本区域都要单独列出
 - 即使是很短的文字也要包含
-- 翻译要准确且符合中文表达习惯
-- 保持原文的情感色彩"""
+- 翻译要准确且符合{target_language}表达习惯
+- 保持原文的情感色彩
+- 翻译风格要体现{translation_style}的特点"""
+
+            print(f"🎯 使用翻译设置 - 目标语言: {target_language}, 风格: {translation_style}")
+            print(f"📝 提示词长度: {len(prompt)} 字符")
 
             # 构建请求数据
             if provider == "anthropic":

@@ -156,6 +156,47 @@ class ConfigManager:
         self.config[provider].update(config_updates)
         self.save_config()
 
+    def update_advanced_settings(self, advanced_settings: Dict[str, Any]):
+        """更新高级设置"""
+        if "advanced_settings" not in self.config:
+            self.config["advanced_settings"] = {}
+        self.config["advanced_settings"].update(advanced_settings)
+        self.save_config()
+
+    def get_advanced_settings(self) -> Dict[str, Any]:
+        """获取高级设置"""
+        return self.config.get("advanced_settings", {})
+
+    def get_target_language(self) -> str:
+        """获取目标语言"""
+        return self.get_advanced_settings().get("target_language", "中文")
+
+    def get_translation_style(self) -> str:
+        """获取翻译风格"""
+        return self.get_advanced_settings().get("translation_style", "自然")
+
+    def get_custom_prompt(self) -> str:
+        """获取自定义提示词"""
+        default_prompt = """请分析这张图片中的所有文本内容，包括对话气泡、标题、旁白、音效文字等。
+
+要求：
+1. 识别图片中的每一个文本块
+2. 对每个文本块进行分类（如：对话、旁白、标题、音效等）
+3. 将所有文本翻译成中文
+4. 保持原文的语气和风格
+
+请按以下JSON格式返回结果：
+```json
+[
+  {
+    "type": "对话气泡",
+    "original_text": "原文内容",
+    "translation": "中文翻译"
+  }
+]
+```"""
+        return self.get_advanced_settings().get("custom_prompt", default_prompt)
+
 # 创建全局配置管理器实例
 config_manager = ConfigManager()
 
