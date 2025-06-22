@@ -1923,7 +1923,8 @@ class ComicFullTranslatorApp:
 4. 翻译风格：{translation_style}
 5. 保持原文的语气和风格
 
-请按以下JSON格式返回结果：
+重要：请严格按照以下JSON格式返回结果，不要添加任何其他文字或说明：
+
 ```json
 [
   {{
@@ -1939,12 +1940,12 @@ class ComicFullTranslatorApp:
 ]
 ```
 
-注意：
-- 每个独立的文本区域都要单独列出
-- 即使是很短的文字也要包含
-- 翻译要准确且符合{target_language}表达习惯
-- 保持原文的情感色彩
-- 翻译风格要体现{translation_style}的特点"""
+格式要求：
+- 必须返回有效的JSON数组格式
+- 每个文本块包含type、original_text、translation三个字段
+- 不要在JSON前后添加任何解释文字
+- 确保JSON语法正确，注意逗号和引号
+- 即使只有一个文本块也要用数组格式 [...]"""
 
             print(f"🎯 使用翻译设置 - 目标语言: {target_language}, 风格: {translation_style}")
             print(f"📝 提示词长度: {len(prompt)} 字符")
@@ -2049,6 +2050,11 @@ class ComicFullTranslatorApp:
                 raise Exception("API返回的内容为空")
 
             print(f"✅ 成功获取AI响应，内容长度: {len(content)}")
+            print(f"📄 AI响应内容预览: {content[:300]}...")
+            print(f"📄 完整AI响应内容:")
+            print("-" * 60)
+            print(content)
+            print("-" * 60)
 
             # 解析JSON结果
             return self.parse_translation_response(content)
@@ -2067,6 +2073,81 @@ class ComicFullTranslatorApp:
         except Exception as e:
             print(f"❌ 全图翻译调用失败: {e}")
             raise e
+
+    def fix_json_errors(self, json_str):
+        """修复常见的JSON语法错误"""
+        try:
+            print("🔧 尝试修复JSON错误...")
+
+            # 1. 移除或转义控制字符
+            # 移除无效的控制字符，但保留必要的换行和制表符
+            json_str = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', json_str)
+
+            # 2. 修复字符串中的换行符
+            # 将字符串值中的实际换行符转换为 \n
+            json_str = re.sub(r'("translation":\s*"[^"]*)\n([^"]*")', r'\1\\n\2', json_str)
+            json_str = re.sub(r'("original_text":\s*"[^"]*)\n([^"]*")', r'\1\\n\2', json_str)
+
+            # 3. 修复不完整的JSON对象
+            # 查找没有正确闭合的字符串
+            lines = json_str.split('\n')
+            fixed_lines = []
+
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line:
+                    continue
+
+                # 检查是否是不完整的字符串
+                if line.count('"') % 2 != 0 and not line.endswith(',') and not line.endswith('}'):
+                    # 如果字符串没有正确闭合，尝试修复
+                    if '"translation":' in line and not line.endswith('"'):
+                        line = line + '"'
+                    elif '"original_text":' in line and not line.endswith('"'):
+                        line = line + '"'
+
+                fixed_lines.append(line)
+
+            json_str = '\n'.join(fixed_lines)
+
+            # 4. 修复多余的逗号
+            json_str = re.sub(r',\s*}', '}', json_str)  # 对象末尾多余逗号
+            json_str = re.sub(r',\s*]', ']', json_str)  # 数组末尾多余逗号
+
+            # 5. 修复缺少逗号的情况
+            json_str = re.sub(r'"\s*\n\s*"', '",\n    "', json_str)  # 字符串之间缺少逗号
+            json_str = re.sub(r'}\s*\n\s*{', '},\n  {', json_str)    # 对象之间缺少逗号
+
+            # 6. 修复引号问题
+            json_str = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', json_str)  # 键缺少引号
+
+            # 7. 修复字符串中的特殊字符
+            # 转义字符串中的反斜杠和引号
+            json_str = re.sub(r'("(?:original_text|translation)":\s*"[^"]*?)\\(?![nrt"\\])([^"]*?")', r'\1\\\\\2', json_str)
+
+            # 8. 确保正确的数组格式
+            json_str = json_str.strip()
+            if not json_str.startswith('['):
+                json_str = '[' + json_str
+            if not json_str.endswith(']'):
+                json_str = json_str + ']'
+
+            # 9. 最后清理：移除多余的空白字符
+            lines = json_str.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                line = line.strip()
+                if line:
+                    cleaned_lines.append(line)
+            json_str = '\n'.join(cleaned_lines)
+
+            print("✅ JSON修复完成")
+            print(f"🔍 修复后的JSON预览: {json_str[:200]}...")
+            return json_str
+
+        except Exception as e:
+            print(f"⚠️ JSON修复失败: {e}")
+            return json_str
 
     def parse_translation_response(self, content):
         """解析翻译响应"""
@@ -2099,6 +2180,9 @@ class ComicFullTranslatorApp:
             # 清理JSON字符串
             json_str = json_str.strip()
 
+            # 尝试修复常见的JSON错误
+            json_str = self.fix_json_errors(json_str)
+
             # 解析JSON
             results = json.loads(json_str)
             print(f"✅ JSON解析成功，找到 {len(results) if isinstance(results, list) else 1} 个项目")
@@ -2124,8 +2208,66 @@ class ComicFullTranslatorApp:
             print(f"❌ JSON解析失败: {e}")
             print(f"📄 尝试解析的内容: {json_str[:200]}...")
 
+            # 尝试手动重构JSON
+            print("🔧 尝试手动重构JSON...")
+            reconstructed_json = self.reconstruct_json_from_text(content)
+            if reconstructed_json:
+                return reconstructed_json
+
             # 如果JSON解析失败，尝试简单的文本解析
             return self.parse_text_response(content)
+
+    def reconstruct_json_from_text(self, content):
+        """从混乱的文本中重构JSON数据"""
+        try:
+            print("🔧 开始手动重构JSON...")
+
+            # 提取所有可能的翻译对
+            results = []
+
+            # 使用正则表达式提取 "original_text" 和 "translation" 对
+            pattern = r'"original_text":\s*"([^"]*(?:\\.[^"]*)*)"[^}]*?"translation":\s*"([^"]*(?:\\.[^"]*)*)"'
+            matches = re.findall(pattern, content, re.DOTALL)
+
+            for i, (original, translation) in enumerate(matches):
+                # 清理文本
+                original = original.replace('\\n', ' ').replace('\n', ' ').strip()
+                translation = translation.replace('\\n', ' ').replace('\n', ' ').strip()
+
+                if original and translation:
+                    results.append({
+                        'type': '对话气泡',
+                        'original_text': original,
+                        'translation': translation
+                    })
+
+            # 如果没有找到匹配，尝试其他模式
+            if not results:
+                # 尝试查找类似 "text": "content" 的模式
+                text_pattern = r'"([^"]*)":\s*"([^"]*)"'
+                text_matches = re.findall(text_pattern, content)
+
+                current_item = {}
+                for key, value in text_matches:
+                    if 'original' in key.lower() or 'text' in key.lower():
+                        current_item['original_text'] = value.strip()
+                    elif 'translation' in key.lower() or 'trans' in key.lower():
+                        current_item['translation'] = value.strip()
+                        if 'original_text' in current_item:
+                            current_item['type'] = '对话气泡'
+                            results.append(current_item.copy())
+                            current_item = {}
+
+            if results:
+                print(f"✅ 成功重构JSON，找到 {len(results)} 个项目")
+                return results
+            else:
+                print("❌ 无法重构JSON")
+                return None
+
+        except Exception as e:
+            print(f"❌ JSON重构失败: {e}")
+            return None
 
         except Exception as e:
             print(f"❌ 解析响应时出错: {e}")
